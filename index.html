@@ -1,0 +1,741 @@
+```teste leve 
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Auto.js Master Vector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Paper.js para extração matemática -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paper.js/0.12.17/paper-core.min.js"></script>
+    <!-- Opentype para conversão de Texto -> Vetor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; touch-action: manipulation; }
+        .panel { background-color: #1e293b; border-color: #334155; }
+        /* Grid de fundo para o Canvas */
+        #canvasWrapper {
+            background-color: #020617; 
+            background-image: radial-gradient(#334155 1px, transparent 0); 
+            background-size: 20px 20px;
+            touch-action: none;
+        }
+        canvas { touch-action: none; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px;}
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .range-sm { height: 4px; accent-color: #10b981; cursor: pointer; }
+        
+        .grab-cursor { cursor: grab; }
+        .grabbing-cursor { cursor: grabbing !important; }
+
+        /* Botão Flutuante (FAB) */
+        .fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 50;
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans p-2 md:p-4 overflow-x-hidden flex flex-col pb-24">
+
+    <!-- OVERLAYS -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+        <i data-lucide="loader-2" class="w-12 h-12 text-emerald-500 animate-spin mb-4"></i>
+        <h2 class="text-white font-bold text-lg" id="loadingText">A processar...</h2>
+    </div>
+
+    <!-- BOTÃO FLUTUANTE (FAB) -->
+    <button id="fabGenerateBtn" class="fab bg-emerald-600 hover:bg-emerald-500 text-white rounded-full p-4 flex items-center justify-center gap-2 transition-transform transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i data-lucide="play" class="w-6 h-6 fill-current"></i>
+        <span class="font-bold text-sm hidden md:inline pr-2">Gerar Código</span>
+    </button>
+
+    <div class="max-w-[1400px] mx-auto w-full space-y-4 flex-1 flex flex-col">
+        
+        <!-- HEADER -->
+        <header class="flex flex-col md:flex-row items-center justify-between panel p-3 md:p-4 rounded-xl shadow-lg border gap-4">
+            <div class="flex items-center gap-3 w-full md:w-auto">
+                <div class="p-2 bg-emerald-500/20 rounded-lg border border-emerald-500/30">
+                    <i data-lucide="pen-tool" class="w-6 h-6 text-emerald-400"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg md:text-xl font-bold text-white leading-tight">Auto.js Master Vector</h1>
+                    <p class="text-[10px] md:text-xs text-gray-400">Arraste, Separe por Camadas e Desenhe</p>
+                </div>
+            </div>
+            
+            <div class="flex w-full md:w-auto gap-2">
+                <input type="text" id="textInput" placeholder="Adicionar texto..." class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500 transition-colors">
+                <button id="addTextBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition-colors" title="Criar texto vetorial">
+                    <i data-lucide="type" class="w-4 h-4"></i>
+                </button>
+                <div class="w-px bg-slate-700 mx-1"></div>
+                <button id="importBtn" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition-colors shrink-0">
+                    <i data-lucide="upload" class="w-4 h-4"></i> <span class="hidden md:inline">Importar SVG</span>
+                </button>
+                <input type="file" id="fileInput" accept=".svg" class="hidden">
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1">
+            
+            <!-- COLUNA ESQUERDA: CONFIGURAÇÕES GERAIS -->
+            <div class="lg:col-span-3 space-y-4">
+                
+                <div class="panel p-4 rounded-xl shadow-lg border space-y-4">
+                    
+                    <!-- CONFIG: TELA -->
+                    <div class="space-y-3">
+                        <h3 class="text-xs font-bold text-gray-300 flex items-center gap-1"><i data-lucide="smartphone" class="w-3.5 h-3.5 text-indigo-400"></i> Tela do Dispositivo (Alvo)</h3>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <label class="block text-gray-400 mb-1">Largura (X)</label>
+                                <input type="number" id="screenW" value="1080" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5 outline-none text-white text-center">
+                            </div>
+                            <div>
+                                <label class="block text-gray-400 mb-1">Altura (Y)</label>
+                                <input type="number" id="screenH" value="2400" class="w-full bg-slate-800 border border-slate-600 rounded p-1.5 outline-none text-white text-center">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CONFIG: CAMADAS E EXTRAÇÃO -->
+                    <div class="border-t border-slate-700 pt-4 space-y-3">
+                        <h3 class="text-xs font-bold text-gray-300 flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5 text-pink-400"></i> Camadas do Desenho</h3>
+                        
+                        <div class="space-y-2">
+                            <label class="flex items-center justify-between p-2 bg-slate-800/80 rounded border border-slate-600 cursor-pointer hover:bg-slate-700 transition">
+                                <span class="text-xs text-gray-200 flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-indigo-400"></div> Fundo <span class="text-[9px] text-gray-500">(Áreas Maiores)</span></span>
+                                <input type="checkbox" id="layerFundo" checked class="w-4 h-4 accent-indigo-500">
+                            </label>
+                            
+                            <label class="flex items-center justify-between p-2 bg-slate-800/80 rounded border border-slate-600 cursor-pointer hover:bg-slate-700 transition">
+                                <span class="text-xs text-gray-200 flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-pink-400"></div> Preenchimento <span class="text-[9px] text-gray-500">(Detalhes Internos)</span></span>
+                                <input type="checkbox" id="layerPreench" checked class="w-4 h-4 accent-pink-500">
+                            </label>
+                            
+                            <label class="flex items-center justify-between p-2 bg-slate-800/80 rounded border border-slate-600 cursor-pointer hover:bg-slate-700 transition">
+                                <span class="text-xs text-gray-200 flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-emerald-400"></div> Contorno <span class="text-[9px] text-gray-500">(Linhas/Bordas)</span></span>
+                                <input type="checkbox" id="layerContorno" checked class="w-4 h-4 accent-emerald-500">
+                            </label>
+                        </div>
+                        
+                        <div class="flex items-center justify-between gap-2 bg-slate-800/50 p-2 rounded">
+                            <label class="text-[10px] text-gray-400">Densidade (Linhas)</label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="fillDensity" value="8" min="2" max="30" class="w-12 bg-slate-800 border border-slate-600 rounded p-1 text-xs text-white text-center">
+                                <button id="recalcLayersBtn" class="bg-slate-600 hover:bg-slate-500 text-white p-1 rounded" title="Recalcular"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CONFIG: TEMPO DO ROBÔ -->
+                    <div class="border-t border-slate-700 pt-4 space-y-3">
+                        <h3 class="text-xs font-bold text-amber-400 flex items-center gap-1"><i data-lucide="timer" class="w-3.5 h-3.5"></i> Tempo de Execução</h3>
+                        <div>
+                            <label class="block text-[11px] text-gray-400 mb-1">Duração Total Desejada (Segundos)</label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="targetTime" value="60" min="5" max="3600" class="w-full bg-slate-800 border border-slate-600 rounded p-2 text-sm text-white font-bold text-center outline-none focus:border-amber-500">
+                                <span class="text-xs text-gray-500 font-bold">SEG</span>
+                            </div>
+                            <p class="text-[9px] text-slate-500 mt-1 leading-tight">O robô irá acelerar ou abrandar matematicamente para terminar todo o desenho neste exato tempo.</p>
+                        </div>
+                        <div class="pt-2">
+                            <label class="flex justify-between text-[10px] text-gray-400 mb-1"><span>Qualidade / Filtro de Pontos</span> <span id="precisionVal">3px</span></label>
+                            <input type="range" id="precision" min="1" max="15" value="3" class="w-full range-sm accent-amber-500">
+                        </div>
+                        <div class="pt-2">
+                            <label class="flex items-center justify-between p-2 bg-slate-800/80 rounded border border-slate-600 cursor-pointer hover:bg-slate-700 transition">
+                                <span class="text-[11px] text-gray-200 flex items-center gap-2"><i data-lucide="bell" class="w-3.5 h-3.5 text-amber-400"></i> Notificar no final</span>
+                                <input type="checkbox" id="notifyFinish" checked class="w-4 h-4 accent-amber-500">
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- COLUNA DIREITA: PREVIEW, TRANSFORMAÇÃO E CÓDIGO -->
+            <div class="lg:col-span-9 flex flex-col gap-4">
+                
+                <!-- PREVIEW -->
+                <div class="panel p-2 md:p-4 rounded-xl shadow-lg border flex flex-col min-h-[400px] relative">
+                    
+                    <div id="canvasWrapper" class="flex-1 rounded-lg border border-slate-600 relative overflow-hidden grab-cursor bg-[#020617]">
+                        <canvas id="previewCanvas" class="w-full h-full absolute inset-0"></canvas>
+                        <div id="noSvgMsg" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 pointer-events-none">
+                            <i data-lucide="image-plus" class="w-12 h-12 mb-2 opacity-50"></i>
+                            <span class="text-sm">Importe um SVG ou crie um Texto</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROLOS DE TRANSFORMAÇÃO (Abaixo da tela) -->
+                <div class="panel p-3 md:p-4 rounded-xl shadow-lg border relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-sky-400 flex items-center gap-2"><i data-lucide="move" class="w-4 h-4"></i> Ajuste na Tela</h3>
+                        <button id="centerBtn" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><i data-lucide="crosshair" class="w-3.5 h-3.5"></i> Centrar Desenho</button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        <div>
+                            <label class="flex justify-between text-[11px] text-gray-400 mb-1"><span>Tamanho Proporcional</span> <span id="scaleVal" class="text-white font-bold">1.00x</span></label>
+                            <input type="range" id="scale" min="0.1" max="5" step="0.01" value="1.0" class="w-full range-sm accent-sky-500">
+                        </div>
+                        <div>
+                            <label class="flex justify-between text-[11px] text-gray-400 mb-1"><span>Girar (Rotação)</span> <span id="rotVal" class="text-white font-bold">0°</span></label>
+                            <input type="range" id="rotation" min="0" max="360" step="1" value="0" class="w-full range-sm accent-sky-500">
+                        </div>
+                        <div>
+                            <label class="flex justify-between text-[11px] text-gray-400 mb-1"><span>Eixo X (Horizontal)</span> <span id="posXVal" class="text-white">0</span></label>
+                            <input type="range" id="posX" min="-2000" max="2000" value="0" class="w-full range-sm accent-sky-500">
+                        </div>
+                        <div>
+                            <label class="flex justify-between text-[11px] text-gray-400 mb-1"><span>Eixo Y (Vertical)</span> <span id="posYVal" class="text-white">0</span></label>
+                            <input type="range" id="posY" min="-2000" max="2000" value="0" class="w-full range-sm accent-sky-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CÓDIGO GERADO -->
+                <div class="panel p-3 md:p-4 rounded-xl shadow-lg border flex flex-col h-[250px] shrink-0" id="codeSection">
+                    <div class="flex flex-col gap-2 mb-3">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                                <i data-lucide="code" class="w-4 h-4"></i> Script Final
+                            </h2>
+                            <span id="statSummary" class="text-[10px] text-gray-400 hidden md:inline bg-slate-800 px-2 py-1 rounded">Aguardando...</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="fileNameInput" value="arte_vetorial" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-emerald-500" placeholder="Nome do arquivo">
+                            <button id="downloadBtn" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold transition flex items-center gap-1" title="Baixar .js">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> <span class="hidden md:inline">Baixar</span>
+                            </button>
+                            <button id="copyBtn" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold transition flex items-center gap-1" title="Copiar">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i> <span class="hidden md:inline">Copiar</span>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea id="outputCode" readonly placeholder="O seu código para o robô Auto.js vai aparecer aqui. Clique no botão Verde a flutuar para Gerar." class="flex-1 w-full bg-[#0d1117] text-[#56d364] font-mono text-[10px] md:text-xs p-3 rounded-lg border border-slate-700 outline-none resize-none custom-scrollbar whitespace-pre overflow-x-auto"></textarea>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // ==========================================
+        // VARIÁVEIS GLOBAIS
+        // ==========================================
+        let rawSvgContent = null;
+        
+        // As 3 camadas base (Centradas no 0,0 matemático)
+        let baseLinesFundo = [];       // Áreas de preenchimento enormes
+        let baseLinesPreenchimento = []; // Áreas de preenchimento pequenas
+        let baseLinesContorno = [];    // Linhas
+
+        let canvasToDeviceScale = 1;
+        let deviceCX = 0, deviceCY = 0;
+
+        // Font Roboto por defeito via CDN
+        const DEFAULT_FONT_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf';
+
+        const els = {
+            importBtn: document.getElementById('importBtn'), fileInput: document.getElementById('fileInput'),
+            textInput: document.getElementById('textInput'), addTextBtn: document.getElementById('addTextBtn'),
+            fabGenerateBtn: document.getElementById('fabGenerateBtn'), recalcLayersBtn: document.getElementById('recalcLayersBtn'),
+            loadingOverlay: document.getElementById('loadingOverlay'), loadingText: document.getElementById('loadingText'),
+            canvas: document.getElementById('previewCanvas'), canvasWrapper: document.getElementById('canvasWrapper'),
+            noSvgMsg: document.getElementById('noSvgMsg'), outputCode: document.getElementById('outputCode'),
+            
+            // Transformações
+            scale: document.getElementById('scale'), scaleVal: document.getElementById('scaleVal'),
+            rotation: document.getElementById('rotation'), rotVal: document.getElementById('rotVal'),
+            posX: document.getElementById('posX'), posXVal: document.getElementById('posXVal'),
+            posY: document.getElementById('posY'), posYVal: document.getElementById('posYVal'),
+            centerBtn: document.getElementById('centerBtn'),
+            
+            // Configs
+            screenW: document.getElementById('screenW'), screenH: document.getElementById('screenH'),
+            layerFundo: document.getElementById('layerFundo'), layerPreench: document.getElementById('layerPreench'), layerContorno: document.getElementById('layerContorno'),
+            fillDensity: document.getElementById('fillDensity'),
+            targetTime: document.getElementById('targetTime'), 
+            precision: document.getElementById('precision'), precisionVal: document.getElementById('precisionVal'),
+            notifyFinish: document.getElementById('notifyFinish'),
+
+            // Output & Stats
+            statSummary: document.getElementById('statSummary'), copyBtn: document.getElementById('copyBtn'),
+            fileNameInput: document.getElementById('fileNameInput'), downloadBtn: document.getElementById('downloadBtn')
+        };
+
+        const ctx = els.canvas.getContext('2d');
+        const dummyCanvas = document.createElement('canvas');
+        paper.setup(dummyCanvas);
+
+        // ==========================================
+        // IMPORTAÇÃO SVG E TEXTO
+        // ==========================================
+        els.importBtn.onclick = () => els.fileInput.click();
+        els.fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            let baseName = file.name.replace(/\.[^/.]+$/, "");
+            els.fileNameInput.value = baseName.replace(/[^a-z0-9_\-]/gi, '_').toLowerCase() || "arte_vetorial";
+            
+            rawSvgContent = await file.text();
+            els.fileInput.value = ''; 
+            resetToCenter();
+            await extractBaseVector();
+        };
+
+        els.addTextBtn.onclick = async () => {
+            const txt = els.textInput.value.trim();
+            if(!txt) { alert("Digite um texto primeiro!"); return; }
+            
+            els.fileNameInput.value = "texto_" + txt.substring(0, 15).replace(/[^a-z0-9_\-]/gi, '_').toLowerCase();
+            
+            els.loadingOverlay.classList.remove('hidden');
+            els.loadingText.innerText = "A converter fonte em curvas...";
+            await new Promise(r => setTimeout(r, 50));
+
+            opentype.load(DEFAULT_FONT_URL, async function(err, font) {
+                if (err) { els.loadingOverlay.classList.add('hidden'); alert('Erro ao carregar a fonte.'); return; }
+                
+                const glyphPaths = font.getPaths(txt, 0, 0, 100);
+                let finalPaperItem = null;
+                
+                // Unir letras usando Paper.js
+                glyphPaths.forEach(gp => {
+                    const d = gp.toPathData(2);
+                    if (!d) return;
+                    try {
+                        const pPath = new paper.CompoundPath(d);
+                        if (!finalPaperItem) { finalPaperItem = pPath; } 
+                        else {
+                            const united = finalPaperItem.unite(pPath);
+                            finalPaperItem.remove(); pPath.remove();
+                            finalPaperItem = united;
+                        }
+                    } catch(e) {}
+                });
+
+                if (finalPaperItem) {
+                    const bounds = finalPaperItem.bounds;
+                    const vx = bounds.x - 10; const vy = bounds.y - 10;
+                    const vw = bounds.width + 20; const vh = bounds.height + 20;
+                    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${vw} ${vh}">${finalPaperItem.exportSVG({asString:true})}</svg>`;
+                    rawSvgContent = svgStr;
+                    finalPaperItem.remove();
+                } else {
+                    rawSvgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>`;
+                }
+                
+                els.textInput.value = '';
+                resetToCenter();
+                await extractBaseVector();
+            });
+        };
+
+        els.recalcLayersBtn.onclick = async () => {
+            if(!rawSvgContent) return;
+            await extractBaseVector();
+        };
+
+        // ==========================================
+        // EXTRAÇÃO INTELIGENTE DE CAMADAS
+        // ==========================================
+        async function extractBaseVector() {
+            els.loadingOverlay.classList.remove('hidden');
+            els.loadingText.innerText = "A separar Fundo, Preenchimento e Contorno...";
+            await new Promise(r => setTimeout(r, 50)); 
+
+            try {
+                paper.project.clear();
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(rawSvgContent, "image/svg+xml");
+                const svgEl = doc.querySelector('svg');
+                if (!svgEl.hasAttribute("viewBox")) {
+                    let w = parseFloat(svgEl.getAttribute("width")) || 1000;
+                    let h = parseFloat(svgEl.getAttribute("height")) || 1000;
+                    svgEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+                }
+
+                paper.project.importSVG(svgEl.outerHTML, { expandShapes: true, insert: true });
+                const bounds = paper.project.activeLayer.bounds;
+                if (bounds.width === 0 || bounds.height === 0) throw new Error("Arte vazia");
+
+                const centerPoint = bounds.center;
+                const baseScaleFactor = 800 / Math.max(bounds.width, bounds.height); 
+                const totalBoundsArea = bounds.width * bounds.height;
+
+                baseLinesFundo = [];
+                baseLinesPreenchimento = [];
+                baseLinesContorno = [];
+
+                // 1. Extrair Contornos (Strokes puros)
+                let strokedItems = paper.project.getItems({ class: paper.Path, match: i => !i.clipMask && i.length > 0 });
+                strokedItems.forEach(path => {
+                    let currentLine = [];
+                    for (let l = 0; l <= path.length; l += 1.5) {
+                        let pt = path.getPointAt(l);
+                        if(pt) currentLine.push({ x: (pt.x - centerPoint.x) * baseScaleFactor, y: (pt.y - centerPoint.y) * baseScaleFactor });
+                    }
+                    if (currentLine.length > 1) baseLinesContorno.push(currentLine);
+                });
+
+                // 2. Extrair Preenchimentos e Separar (Fundo vs Detalhes)
+                const density = parseInt(els.fillDensity.value) || 8;
+                let filledItems = paper.project.getItems({
+                    class: paper.PathItem,
+                    match: i => i.fillColor && i.fillColor.alpha !== 0 && !i.clipMask && i.bounds.width > 0
+                });
+
+                filledItems.forEach(item => {
+                    let iB = item.bounds;
+                    let itemArea = iB.width * iB.height;
+                    
+                    // LÓGICA DE SEPARAÇÃO: Se a forma ocupa mais de 35% do espaço total, é considerada "FUNDO"
+                    let isBackground = (itemArea / totalBoundsArea) > 0.35;
+                    
+                    let diag = Math.sqrt(iB.width*iB.width + iB.height*iB.height);
+                    let center = iB.center;
+                    
+                    // Fundo tem hachura horizontal pura, detalhes têm hachura diagonal
+                    let angleDir = isBackground ? 0 : 45;
+                    let angleNorm = isBackground ? 90 : 135;
+                    let realDensity = isBackground ? density * 1.5 : density; // Fundo é desenhado com linhas mais espaçadas
+
+                    let dir = new paper.Point({ length: 1, angle: angleDir });
+                    let norm = new paper.Point({ length: 1, angle: angleNorm });
+
+                    for (let t = -diag/2; t <= diag/2; t += realDensity) {
+                        let rayCenter = center.add(norm.multiply(t));
+                        let p1 = rayCenter.subtract(dir.multiply(diag));
+                        let p2 = rayCenter.add(dir.multiply(diag));
+                        
+                        let line = new paper.Path.Line(p1, p2);
+                        let inters = item.getIntersections(line);
+                        
+                        if (inters.length >= 2) {
+                            inters.sort((a, b) => a.point.getDistance(p1) - b.point.getDistance(p1));
+                            for (let i = 0; i < inters.length - 1; i += 2) {
+                                let mappedLine = [
+                                    { x: (inters[i].point.x - centerPoint.x) * baseScaleFactor, y: (inters[i].point.y - centerPoint.y) * baseScaleFactor },
+                                    { x: (inters[i+1].point.x - centerPoint.x) * baseScaleFactor, y: (inters[i+1].point.y - centerPoint.y) * baseScaleFactor }
+                                ];
+                                
+                                if(isBackground) baseLinesFundo.push(mappedLine);
+                                else baseLinesPreenchimento.push(mappedLine);
+                            }
+                        }
+                        line.remove();
+                    }
+                });
+
+                els.noSvgMsg.style.display = 'none';
+                drawInteractiveCanvas();
+
+            } catch (err) {
+                console.error(err); alert("Erro ao importar: " + err.message);
+            } finally {
+                els.loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // MATEMÁTICA INTERATIVA (Sem lag)
+        // ==========================================
+        function getTransformValues() {
+            return {
+                x: parseFloat(els.posX.value) || 0,
+                y: parseFloat(els.posY.value) || 0,
+                scale: parseFloat(els.scale.value) || 1.0,
+                rotRad: (parseFloat(els.rotation.value) || 0) * Math.PI / 180
+            };
+        }
+
+        function applyMathTransform(pt, t) {
+            const cos = Math.cos(t.rotRad);
+            const sin = Math.sin(t.rotRad);
+            let sx = pt.x * t.scale;
+            let sy = pt.y * t.scale;
+            return { x: (sx * cos - sy * sin) + t.x, y: (sx * sin + sy * cos) + t.y };
+        }
+
+        function drawInteractiveCanvas() {
+            if(baseLinesContorno.length === 0 && baseLinesPreenchimento.length === 0 && baseLinesFundo.length === 0) return;
+
+            const cw = els.canvasWrapper.clientWidth;
+            const ch = els.canvasWrapper.clientHeight;
+            els.canvas.width = cw; els.canvas.height = ch;
+            
+            const sw = parseInt(els.screenW.value) || 1080;
+            const sh = parseInt(els.screenH.value) || 2400;
+
+            canvasToDeviceScale = Math.min((cw - 40) / sw, (ch - 40) / sh);
+            deviceCX = (cw - sw * canvasToDeviceScale) / 2;
+            deviceCY = (ch - sh * canvasToDeviceScale) / 2;
+
+            ctx.clearRect(0, 0, cw, ch);
+            ctx.strokeStyle = "rgba(255,255,255,0.15)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(deviceCX, deviceCY, sw * canvasToDeviceScale, sh * canvasToDeviceScale);
+
+            const t = getTransformValues();
+
+            const drawGroup = (baseArr, color, lineWidth) => {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lineWidth;
+                baseArr.forEach(line => {
+                    line.forEach((p, i) => {
+                        let mathPt = applyMathTransform(p, t);
+                        let sx = deviceCX + mathPt.x * canvasToDeviceScale;
+                        let sy = deviceCY + mathPt.y * canvasToDeviceScale;
+                        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+                    });
+                });
+                ctx.stroke();
+            };
+
+            // Desenhar em ordem de sobreposição
+            if (els.layerFundo.checked) drawGroup(baseLinesFundo, "rgba(99, 102, 241, 0.5)", 1); // Indigo Fundo
+            if (els.layerPreench.checked) drawGroup(baseLinesPreenchimento, "rgba(236, 72, 153, 0.7)", 1); // Pink Preenchimento
+            if (els.layerContorno.checked) drawGroup(baseLinesContorno, "rgba(52, 211, 153, 1)", 1.5); // Esmeralda Contorno
+        }
+
+        // ==========================================
+        // EVENTOS DE TELA E RASTO
+        // ==========================================
+        let isDragging = false;
+        let dragStartCanvasX = 0, dragStartCanvasY = 0;
+        let objStartPosX = 0, objStartPosY = 0;
+
+        const getPos = (e) => e.touches && e.touches.length > 0 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+
+        function startDrag(e) {
+            if(!rawSvgContent) return;
+            isDragging = true;
+            els.canvasWrapper.classList.replace('grab-cursor', 'grabbing-cursor');
+            const pos = getPos(e);
+            dragStartCanvasX = pos.x; dragStartCanvasY = pos.y;
+            objStartPosX = parseFloat(els.posX.value) || 0;
+            objStartPosY = parseFloat(els.posY.value) || 0;
+        }
+
+        function moveDrag(e) {
+            if (!isDragging) return;
+            e.preventDefault(); 
+            const pos = getPos(e);
+            const moveDeviceX = (pos.x - dragStartCanvasX) / canvasToDeviceScale;
+            const moveDeviceY = (pos.y - dragStartCanvasY) / canvasToDeviceScale;
+            els.posX.value = objStartPosX + moveDeviceX;
+            els.posY.value = objStartPosY + moveDeviceY;
+            syncUI(); drawInteractiveCanvas();
+        }
+
+        function stopDrag() { isDragging = false; els.canvasWrapper.classList.replace('grabbing-cursor', 'grab-cursor'); }
+
+        els.canvasWrapper.addEventListener('mousedown', startDrag);
+        els.canvasWrapper.addEventListener('touchstart', startDrag, { passive: false });
+        window.addEventListener('mousemove', moveDrag);
+        window.addEventListener('touchmove', moveDrag, { passive: false });
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+
+        function syncUI() {
+            els.scaleVal.innerText = parseFloat(els.scale.value).toFixed(2) + 'x';
+            els.rotVal.innerText = els.rotation.value + '°';
+            els.posXVal.innerText = Math.round(els.posX.value);
+            els.posYVal.innerText = Math.round(els.posY.value);
+            els.precisionVal.innerText = els.precision.value + 'px';
+        }
+
+        function resetToCenter() {
+            els.scale.value = 1.0; els.rotation.value = 0;
+            els.posX.value = parseInt(els.screenW.value) / 2; els.posY.value = parseInt(els.screenH.value) / 2;
+            syncUI(); drawInteractiveCanvas();
+        }
+
+        els.scale.addEventListener('input', () => { syncUI(); drawInteractiveCanvas(); });
+        els.rotation.addEventListener('input', () => { syncUI(); drawInteractiveCanvas(); });
+        els.posX.addEventListener('input', () => { syncUI(); drawInteractiveCanvas(); });
+        els.posY.addEventListener('input', () => { syncUI(); drawInteractiveCanvas(); });
+        els.centerBtn.onclick = resetToCenter;
+        
+        els.screenW.addEventListener('change', drawInteractiveCanvas); els.screenH.addEventListener('change', drawInteractiveCanvas);
+        els.layerFundo.addEventListener('change', drawInteractiveCanvas); els.layerPreench.addEventListener('change', drawInteractiveCanvas); els.layerContorno.addEventListener('change', drawInteractiveCanvas);
+        els.precision.addEventListener('input', syncUI);
+        
+        window.addEventListener('resize', () => { if(rawSvgContent) drawInteractiveCanvas(); });
+
+        // ==========================================
+        // GERAÇÃO DE CÓDIGO & MOTOR DE TEMPO
+        // ==========================================
+        els.fabGenerateBtn.onclick = () => {
+            if (!rawSvgContent) { alert("A área está vazia! Importe um SVG ou crie texto."); return; }
+            els.loadingOverlay.classList.remove('hidden'); els.loadingText.innerText = "A escrever código Auto.js...";
+            setTimeout(() => {
+                try { generateAutoJsCode(); } catch(e) { alert("Erro ao gerar: " + e.message); }
+                finally { els.loadingOverlay.classList.add('hidden'); }
+            }, 50);
+        };
+
+        function generateAutoJsCode() {
+            const t = getTransformValues();
+            const sw = parseInt(els.screenW.value) || 1080;
+            const sh = parseInt(els.screenH.value) || 2400;
+            const userStepSq = Math.pow(parseInt(els.precision.value) || 3, 2);
+            const targetSeconds = parseFloat(els.targetTime.value) || 60;
+            const targetMs = targetSeconds * 1000;
+
+            let finalFundo = [];
+            let finalPreenchimento = [];
+            let finalContorno = [];
+            
+            // Função para aplicar offset da tela e filtrar pontinhos muito juntos
+            const processArray = (baseArr, finalArr) => {
+                baseArr.forEach(line => {
+                    let currentLine = [];
+                    let lastMathPt = null;
+                    line.forEach(p => {
+                        let mathPt = applyMathTransform(p, t);
+                        if (!lastMathPt) {
+                            currentLine.push({ x: Math.floor(mathPt.x), y: Math.floor(mathPt.y) });
+                            lastMathPt = mathPt;
+                        } else {
+                            let dx = mathPt.x - lastMathPt.x; let dy = mathPt.y - lastMathPt.y;
+                            if ((dx*dx + dy*dy) >= userStepSq) {
+                                currentLine.push({ x: Math.floor(mathPt.x), y: Math.floor(mathPt.y) });
+                                lastMathPt = mathPt;
+                            }
+                        }
+                    });
+                    if (currentLine.length > 1) finalArr.push(currentLine);
+                });
+            };
+
+            if(els.layerFundo.checked) processArray(baseLinesFundo, finalFundo);
+            if(els.layerPreench.checked) processArray(baseLinesPreenchimento, finalPreenchimento);
+            if(els.layerContorno.checked) processArray(baseLinesContorno, finalContorno);
+
+            // CÁLCULO DE TEMPO MÁGICO
+            // O Auto.js leva "dur" milissegundos a percorrer um array. Vamos calcular o "peso" base do desenho inteiro.
+            let totalBaseWeight = 0;
+            let totalTraces = 0; let totalPts = 0;
+            
+            const calculateWeight = (arr) => {
+                arr.forEach(line => {
+                    totalTraces++; totalPts += line.length;
+                    // Peso base imaginário: 5ms por ponto. 
+                    totalBaseWeight += Math.max(20, line.length * 5); 
+                    totalBaseWeight += 35; // Tempo base de levantar e baixar a caneta (sleep default)
+                });
+            };
+            calculateWeight(finalFundo); calculateWeight(finalPreenchimento); calculateWeight(finalContorno);
+
+            if (totalTraces === 0) {
+                els.outputCode.value = "// Nenhuma linha selecionada. Ative pelo menos uma camada.";
+                return;
+            }
+
+            // O nosso Multiplicador ajusta o Peso Base para bater exatamente com os MS desejados pelo utilizador!
+            let multiplier = targetMs / totalBaseWeight;
+            
+            let c = [];
+            c.push(`// ==========================================`);
+            c.push(`// AUTO.JS MASTER VECTOR`);
+            c.push(`// Camadas: ${els.layerFundo.checked?'[X]Fundo ':''}${els.layerPreench.checked?'[X]Preench ':''}${els.layerContorno.checked?'[X]Contorno':''}`);
+            c.push(`// Objetivo: ${targetSeconds} Segundos | Multiplicador Calc: ${multiplier.toFixed(4)}`);
+            c.push(`// ==========================================\n`);
+            c.push(`setScreenMetrics(${sw}, ${sh});\n`);
+            
+            c.push(`function desenharTraço(pts) {`);
+            c.push(`    if(pts.length < 2) return;`);
+            c.push(`    // Duração dinâmica baseada no número de pontos ajustada ao tempo alvo`);
+            c.push(`    var dur = Math.floor(Math.max(20, pts.length * 5) * ${multiplier.toFixed(4)});`);
+            c.push(`    if(dur > 60000) dur = 60000;`);
+            c.push(`    gesture.apply(null, [dur].concat(pts));`);
+            c.push(`    sleep(${Math.floor(35 * multiplier)}); // Pausa também acelera proporcionalmente`);
+            c.push(`}\n`);
+
+            const writeGroup = (name, arr) => {
+                if (arr.length === 0) return;
+                c.push(`// ---> CAMADA: ${name.toUpperCase()} <---`);
+                c.push(`toastLog("Iniciando camada: ${name}");`);
+                arr.forEach(line => {
+                    let ptsStr = line.map(p => `[${p.x},${p.y}]`).join(',');
+                    c.push(`desenharTraço([${ptsStr}]);`);
+                });
+                c.push(``);
+            };
+
+            // A ordem de escrita é vital: Primeiro o fundo, depois o preenchimento, depois o contorno final
+            writeGroup("Fundo (Base)", finalFundo);
+            writeGroup("Preenchimento Interno", finalPreenchimento);
+            writeGroup("Contorno Principal", finalContorno);
+            
+            if (els.notifyFinish.checked) {
+                c.push(`// --- Notificação Final ---`);
+                c.push(`device.vibrate(300);`);
+                c.push(`toastLog("Arte Concluída com sucesso!");`);
+            }
+            
+            els.outputCode.value = c.join('\n');
+
+            els.statSummary.innerText = `P: ${totalPts} | L: ${totalTraces} | ${targetSeconds}s`;
+            els.statSummary.classList.remove('hidden');
+            
+            // Auto scroll para o código
+            document.getElementById('codeSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        els.copyBtn.onclick = () => {
+            if (!els.outputCode.value.includes("desenharTraço")) return;
+            els.outputCode.select();
+            document.execCommand('copy');
+            const original = els.copyBtn.innerHTML;
+            els.copyBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> Copiado!';
+            els.copyBtn.classList.replace('bg-slate-700', 'bg-emerald-600');
+            setTimeout(() => { 
+                els.copyBtn.innerHTML = original; 
+                els.copyBtn.classList.replace('bg-emerald-600', 'bg-slate-700');
+                lucide.createIcons(); 
+            }, 2000);
+        };
+
+        els.downloadBtn.onclick = () => {
+            const code = els.outputCode.value;
+            if (!code.includes("desenharTraço")) { alert("Gere o código primeiro!"); return; }
+            
+            let fileName = els.fileNameInput.value.trim() || "arte_vetorial";
+            if (!fileName.endsWith('.js')) fileName += '.js';
+            
+            const blob = new Blob([code], { type: 'text/javascript' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+    </script>
+</body>
+</html>
+
+
+```
