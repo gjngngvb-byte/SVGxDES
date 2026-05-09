@@ -1,3 +1,4 @@
+pft leve
 <!DOCTYPE html>
 <html lang="pt-PT">
 <head>
@@ -71,9 +72,6 @@
             
             <div class="flex w-full md:w-auto gap-2 items-center flex-wrap md:flex-nowrap">
                 <input type="text" id="textInput" placeholder="Adicionar texto..." class="flex-1 w-24 md:w-auto bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-emerald-500 transition-colors">
-                <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer shrink-0" title="Preencher o interior do texto">
-                    <input type="checkbox" id="fillTextCb" checked class="w-3 h-3 accent-indigo-500"> <span class="hidden md:inline">Preencher</span>
-                </label>
                 <button id="addTextBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg flex items-center gap-2 transition-colors shrink-0" title="Adicionar texto à composição">
                     <i data-lucide="type" class="w-4 h-4"></i>
                 </button>
@@ -299,14 +297,12 @@
 
         const DEFAULT_FONT_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf';
 
-        // Consolidação segura de todos os Elementos da UI
         const els = {
             importBtn: document.getElementById('importBtn'), 
             fileInput: document.getElementById('fileInput'),
             clearBtn: document.getElementById('clearBtn'),
             textInput: document.getElementById('textInput'), 
             addTextBtn: document.getElementById('addTextBtn'),
-            fillTextCb: document.getElementById('fillTextCb'),
             fabGenerateBtn: document.getElementById('fabGenerateBtn'), 
             recalcLayersBtn: document.getElementById('recalcLayersBtn'),
             loadingOverlay: document.getElementById('loadingOverlay'), 
@@ -342,7 +338,7 @@
             targetTime: document.getElementById('targetTime'), 
             precision: document.getElementById('precision'), 
             precisionVal: document.getElementById('precisionVal'),
-            notifyFinish: document.getElementById('notifyFinish'), // Correção da referência ausente
+            notifyFinish: document.getElementById('notifyFinish'), 
             
             statSummary: document.getElementById('statSummary'), 
             copyBtn: document.getElementById('copyBtn'),
@@ -390,33 +386,38 @@
                 if (err) { els.loadingOverlay.classList.add('hidden'); alert('Erro ao carregar a fonte.'); return; }
                 
                 const glyphPaths = font.getPaths(txt, 0, 0, 100);
-                let fullPathData = "";
+                let finalPaperItem = null;
                 
+                // Primeiro une-se todas as letras do texto para não haver interseções onde os caracteres se sobrepõem
                 glyphPaths.forEach(gp => {
                     const d = gp.toPathData(2);
-                    if (d) fullPathData += d + " ";
+                    if (!d) return;
+                    try {
+                        const pPath = new paper.CompoundPath(d);
+                        if (!finalPaperItem) { finalPaperItem = pPath; } 
+                        else {
+                            const united = finalPaperItem.unite(pPath);
+                            finalPaperItem.remove(); pPath.remove();
+                            finalPaperItem = united;
+                        }
+                    } catch(e) {}
                 });
 
-                if (fullPathData.trim() !== "") {
-                    let finalPaperItem = new paper.CompoundPath(fullPathData);
-
-                    if (els.fillTextCb.checked) {
-                        finalPaperItem.fillColor = 'black';
-                        finalPaperItem.fillRule = 'evenodd';
-                    } else {
-                        finalPaperItem.strokeColor = 'black';
-                        finalPaperItem.strokeWidth = 1;
-                        finalPaperItem.fillColor = new paper.Color(0,0,0,0);
-                    }
-
+                if (finalPaperItem) {
                     const bounds = finalPaperItem.bounds;
                     const vx = bounds.x - 10; const vy = bounds.y - 10;
                     const vw = bounds.width + 20; const vh = bounds.height + 20;
-                    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${vw} ${vh}">${finalPaperItem.exportSVG({asString:true})}</svg>`;
                     
-                    finalPaperItem.remove();
+                    // Extrair a path unida de forma segura
+                    const unitedPathData = finalPaperItem.pathData;
+                    finalPaperItem.remove(); // Limpar a cena temporária imediatamente
+
+                    // Lógica para forçar sempre apenas a borda (sem preenchimento)
+                    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vx} ${vy} ${vw} ${vh}">
+                        <path d="${unitedPathData}" fill="none" stroke="black" stroke-width="1"/>
+                    </svg>`;
+                    
                     els.loadingOverlay.classList.add('hidden');
-                    
                     await createElement("Texto: " + txt.substring(0, 10), svgStr, true);
                     els.textInput.value = '';
                 } else {
